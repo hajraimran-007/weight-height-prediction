@@ -1,16 +1,7 @@
 
 import streamlit as st
 import pandas as pd
-import joblib
-
-# Load trained model
-model = joblib.load("model/weight_height_model.joblib")
-
-# Load dataset to get valid weight range
-data = pd.read_csv("datasets/height_weight.csv")
-
-min_weight = float(data["Weight"].min())
-max_weight = float(data["Weight"].max())
+import requests
 
 # Page Configuration
 st.set_page_config(
@@ -18,6 +9,15 @@ st.set_page_config(
     page_icon="📏",
     layout="centered"
 )
+
+# Backend API URL from Streamlit Secrets
+API_URL = st.secrets["API_URL"]
+
+# Load dataset to get valid weight range
+data = pd.read_csv("datasets/height_weight.csv")
+
+min_weight = float(data["Weight"].min())
+max_weight = float(data["Weight"].max())
 
 # Application Title
 st.title("📏 Weight to Height Prediction")
@@ -44,25 +44,45 @@ weight = st.number_input(
 # Prediction Button
 if st.button("Predict Height"):
 
-    # Convert input into DataFrame
-    user_input = pd.DataFrame({
-        "Weight": [weight]
-    })
+    # Prepare API request
+    payload = {
+        "weight": weight
+    }
 
-    # Make Prediction
-    predicted_height = model.predict(user_input)
+    try:
+        # Send POST request to FastAPI
+        response = requests.post(
+            f"{API_URL}/predict",
+            json=payload,
+            timeout=30
+        )
 
-    # Display Result
-    st.success("Prediction Completed!")
+        # Check API response
+        response.raise_for_status()
 
-    st.subheader("Prediction Result")
+        # Convert response into JSON
+        result = response.json()
 
-    st.metric(
-        label="Predicted Height",
-        value=f"{predicted_height[0]:.2f} cm"
-    )
+        # Extract predicted height
+        predicted_height = result["predicted_height"]
 
-    st.write(f"Your entered weight: **{weight:.1f} kg**")
+        # Display Result
+        st.success("Prediction Completed!")
+
+        st.subheader("Prediction Result")
+
+        st.metric(
+            label="Predicted Height",
+            value=f"{predicted_height:.2f} cm"
+        )
+
+        st.write(f"Your entered weight: **{weight:.1f} kg**")
+
+    except requests.exceptions.RequestException as e:
+        st.error(f"Backend API Error: {e}")
+
+    except (KeyError, ValueError):
+        st.error("Invalid response received from backend.")
 
 st.divider()
 
@@ -78,4 +98,6 @@ st.write("""
 - Testing Records: 6
 """)
 
-st.caption("Developed using Python, Pandas, Scikit-learn and Streamlit.")
+st.caption(
+    "Developed using Python, Pandas, Scikit-learn and Streamlit."
+)
